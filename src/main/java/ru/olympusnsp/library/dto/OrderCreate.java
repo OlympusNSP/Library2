@@ -1,0 +1,15 @@
+package ru.olympusnsp.library.dto;
+
+import lombok.*;
+
+import java.util.List;
+
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+@Setter
+@Getter
+public class OrderCreate {
+    Integer user_id;
+    List<Integer> book_ids;
+}
