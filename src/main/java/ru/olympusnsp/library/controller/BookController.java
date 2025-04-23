@@ -61,6 +61,7 @@ public class BookController {
     }
 
     @PostMapping("/{id}/return")
+    @PreAuthorize("hasRole('MANAGER')")
     @Operation(summary = "Возвращение книги")
     public void returnBook(@RequestBody BooksReturn booksReturn,  @PathVariable Integer id){
         if (booksReturn.getBook_id().equals(id))

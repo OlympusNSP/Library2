@@ -9,6 +9,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.http.RequestEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -52,7 +53,7 @@ public class OrderController {
         return orderService.findById(id);
     }
 
-
+    @PreAuthorize("hasRole('MANAGER')")
     @PostMapping(value = "/{id}/start")
     OrderInfo startRentalOrder(@PathVariable Long id) {
         return orderService.startRentalOrder(id);
