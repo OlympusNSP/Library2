@@ -2,6 +2,7 @@ package ru.olympusnsp.library.controller;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,7 +40,7 @@ public class BookController {
 
     @PostMapping("")
     @Operation(summary = "Сохранение книги")
-    public Book save(@RequestBody BookSaving book){
+    public Book save(@RequestBody @Valid BookSaving book){
         logger.info("Save Book: {}", book);
         return bookService.save(book);
     }
@@ -63,7 +64,7 @@ public class BookController {
     @PostMapping("/{id}/return")
     @PreAuthorize("hasRole('MANAGER')")
     @Operation(summary = "Возвращение книги")
-    public void returnBook(@RequestBody BooksReturn booksReturn,  @PathVariable Integer id){
+    public void returnBook(@RequestBody @Valid BooksReturn booksReturn, @PathVariable Integer id){
         if (booksReturn.getBook_id().equals(id))
             bookService.returnBook(booksReturn);
     }

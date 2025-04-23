@@ -21,7 +21,7 @@ public class Book {
     @Column(name = "id", nullable = false)
     private Integer id;
 
-    @Size(max = 255)
+    @Size(min =3, max = 255)
     @Column(name = "title")
     private String title;
 
@@ -30,6 +30,7 @@ public class Book {
     private Short year;
 
     @NotNull
+    @
     @Column(name = "description", nullable = false, length = Integer.MAX_VALUE)
     private String description;
 

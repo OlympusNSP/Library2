@@ -37,7 +37,7 @@ public class OrderController {
     Logger logger = LoggerFactory.getLogger(OrderController.class);
 
     @PostMapping("")
-    Order newOrder(@RequestBody OrderCreate orderCreate, @AuthenticationPrincipal UserDetails userDetails){
+    Order newOrder(@RequestBody @VAlid OrderCreate orderCreate, @AuthenticationPrincipal UserDetails userDetails){
         logger.info("Create new order");
         User user = userService.getByUsername(userDetails.getUsername());
         if (!orderCreate.getUser_id().equals(user.getId()))

@@ -18,9 +18,13 @@ import java.util.List;
 public class BookSaving {
 
     private Long id;
+
+    @Size(min = 3, max = 255)
     private String title;
     private Short year;
+    @Size(min = 10)
     private String description;
+    @NotNull
     private Integer count;
     private List<Integer> authorsId;
     private List<Integer> genresId;
