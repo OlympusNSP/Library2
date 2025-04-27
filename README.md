@@ -17,14 +17,10 @@ https://habr.com/ru/articles/784508/
 POST /order 
 {"user_id":номер пользователя,"book_ids":[список id книг]}
 
+Для сборки книг в библиотеке
+PUT /order/orderbook/[номер orderBook] {"status":"PREPARED"}
 Для выдачи книг
-POST /order/[номер заказа]/start
+PUT /order/orderbook/[номер orderBook] {"status":"RENTED"}
 
-Для того, чтобы отдать книги, надо
-POST /book/[ИД книги]/return
-{"user_id:number, book_i d:number}
-
-Что не готово:
-Валидация данных
-Многие тесты
-не работает авторизация (регистрация работает, и токен рабочий  отдается)
+Для того, чтобы книги вернуть
+PUT /order/orderbook/[номер orderBook] {"status":"RETURNED"}
