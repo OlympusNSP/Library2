@@ -1,4 +1,4 @@
-package ru.olympusnsp.library.model;
+package ru.olympusnsp.library.dto;
 
 public class ErrorItem {
     private String message;

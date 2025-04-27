@@ -6,6 +6,7 @@ import ru.olympusnsp.library.dto.BookSaving;
 import ru.olympusnsp.library.dto.BooksReturn;
 import ru.olympusnsp.library.model.Book;
 
+import java.util.List;
 import java.util.Optional;
 
 public interface BookService {
@@ -17,4 +18,5 @@ public interface BookService {
     Boolean reserveBookById(Integer id);
     void deleteById(Integer id);
     void returnBook(BooksReturn booksReturn);
+    Page<Book> findAllWithGenreId(Integer genreId,Pageable pagable);
 }

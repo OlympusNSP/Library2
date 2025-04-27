@@ -1,6 +1,8 @@
 package ru.olympusnsp.library.service;
 
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -15,6 +17,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 @Service
 public class AuthenticationServiceImpl implements AuthenticationService {
 
+    Logger logger = LoggerFactory.getLogger(AuthenticationServiceImpl.class);
     @Autowired
     private  UserService userService;
     @Autowired
@@ -55,16 +58,20 @@ public class AuthenticationServiceImpl implements AuthenticationService {
      * @return токен
      */
     public JwtAuthenticationResponse signIn(SignInRequest request) {
+        logger.info("Authentication000");
+        logger.info(request.getUsername());
+        logger.info(request.getPassword());
         authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(
                 request.getUsername(),
                 request.getPassword()
         ));
-
+        logger.info("Authentication111");
         var user = userService
                 .userDetailsService()
                 .loadUserByUsername(request.getUsername());
-
+        logger.info("AUthentification222");
         var jwt = jwtService.generateToken(user);
+        logger.info("AUthentification333");
         return new JwtAuthenticationResponse(jwt);
     }
 }

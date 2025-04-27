@@ -35,7 +35,7 @@ public class UserServiceImpl implements UserService {
      * @return пользователь или null
      */
     public User getByUsername(String username){
-        return userRepository.findByUsername(username).orElse(null);
+        return userRepository.findByUsername(username);
     }
 
     /**
@@ -64,7 +64,25 @@ public class UserServiceImpl implements UserService {
      * @return пользователь опционально
      */
     public User findById(Integer id){
-        return userRepository.findById(id).orElseThrow(()-> new NotFoundUser("User with id "+id.toString()+" not found"));
+        return userRepository.findById(id).orElseThrow(()-> new NotFoundUser("User with id "+id+" not found"));
+    }
+
+    /**
+     * Добавление нарушения у пользователя, и блокировка если нарушения два
+     * @param user_id идентификатор
+     * @return пользователя
+     */
+    public User addViolation(Integer user_id){
+        var oUser = userRepository.findById(user_id);
+        if (oUser.isPresent()){
+            var user = oUser.get();
+            user.setViolations(user.getViolations() + 1);
+            if (user.getViolations() == 2) {
+                user.setStatusBlock(true);
+            }
+            return userRepository.save(user);
+        }
+        throw new NotFoundUser("User with id "+user_id+" not found");
     }
 
 }

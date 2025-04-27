@@ -23,7 +23,7 @@ public class BookServiceImpl implements BookService {
     private final GenreService genreService;
     private final UserService userService;
 
-    @Value("${setting.max-day}")
+    @Value("${setting.max-days-rental}")
     private Integer maxDaysInRent;
 
     @Value("${setting.max-violations}")
@@ -162,21 +162,18 @@ public class BookServiceImpl implements BookService {
             var book = oBook.get();
             book.setAvailable(book.getAvailable()+1);
             var user = userService.findById(booksReturn.getUser_id());
-            var rentalBookd =  user.getRentalBooks();
-            var newRentalSet = new HashSet<RentalBook>(rentalBookd);
-            for (var i :rentalBookd){
-                if (i.getUser().equals(user)){
-                    if( ChronoUnit.DAYS.between(i.getDateRentedStart(), LocalDate.now())>maxDaysInRent){
-                        user.setViolations(user.getViolations() + 1);
-                        if (user.getViolations()>maxViolations){
-                            user.setStatusBlock(true);
-                        }
-                    }
-                    newRentalSet.remove(i);
-                }
-            }
-            user.setRentalBooks(newRentalSet);
+
             userService.save(user);
         }
+    }
+
+    /**
+     * Постраничная выдача книг, с заданным жарном
+     * @param genreId идентификтор жанра
+     * @param pagable запрос страницы
+     * @return Страница книг
+     */
+    public Page<Book> findAllWithGenreId(Integer genreId, Pageable pagable){
+        return bookRepository.findBooksByGenreId(genreId,pagable);
     }
 }

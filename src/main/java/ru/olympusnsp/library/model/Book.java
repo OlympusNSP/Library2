@@ -30,7 +30,7 @@ public class Book {
     private Short year;
 
     @NotNull
-    @
+    @Size(min = 20)
     @Column(name = "description", nullable = false, length = Integer.MAX_VALUE)
     private String description;
 

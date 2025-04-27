@@ -15,19 +15,18 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
-import ru.olympusnsp.library.service.JwtServiceImpl;
+import ru.olympusnsp.library.service.JwtService;
 import ru.olympusnsp.library.service.UserService;
 
 import java.io.IOException;
 
 @Component
+@RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
     public static final String BEARER_PREFIX = "Bearer ";
     public static final String HEADER_NAME = "Authorization";
 
-@Autowired
-    private  JwtServiceImpl jwtService;
-@Autowired
+    private JwtService jwtService;
     private  UserService userService;
 
     @Override

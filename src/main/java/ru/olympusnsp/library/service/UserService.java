@@ -11,4 +11,5 @@ public interface UserService {
     User save(User user);
     User getCurrentUser();
     User findById(Integer id);
+    User addViolation(Integer user_id);
 }

@@ -4,6 +4,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -11,273 +12,599 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
-import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.test.util.ReflectionTestUtils; // Для установки @Value полей
+import ru.olympusnsp.library.dto.OrderBookChangeRequest;
 import ru.olympusnsp.library.dto.OrderCreate;
-import ru.olympusnsp.library.exeption.BookCountExcessException;
-import ru.olympusnsp.library.exeption.BookUnavailableException;
-import ru.olympusnsp.library.exeption.NotFoundEntity;
-import ru.olympusnsp.library.exeption.NotFoundUser;
-import ru.olympusnsp.library.model.Book;
-import ru.olympusnsp.library.model.Order;
-import ru.olympusnsp.library.model.User;
+import ru.olympusnsp.library.exeption.*;
+import ru.olympusnsp.library.model.*; // Импортируем User, Book, Order, OrderBook
+import ru.olympusnsp.library.repository.OrderBookRepository;
 import ru.olympusnsp.library.repository.OrderRepository;
 
-import java.util.List;
-import java.util.Optional;
-import java.util.Set;
+import java.time.LocalDate;
+import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.*;
 
-@ExtendWith(MockitoExtension.class) // Интеграция Mockito с JUnit 5
+@ExtendWith(MockitoExtension.class)
 class OrderServiceImplTest {
 
-    @Mock // Создаем мок для OrderRepository
+    @Mock
     private OrderRepository orderRepository;
 
-    @Mock // Создаем мок для UserService
+    @Mock
+    private OrderBookRepository orderBookRepository;
+
+    @Mock
     private UserService userService;
 
-    @Mock // Создаем мок для BookService
+    @Mock
     private BookService bookService;
 
-    @InjectMocks // Внедряем моки в тестируемый сервис
+    @InjectMocks
     private OrderServiceImpl orderService;
+
+    // Константы для тестов
+    private final Integer USER_ID = 1;
+    private final Long ORDER_ID = 10L;
+    private final Long ORDER_BOOK_ID = 100L;
+    private final Integer BOOK_ID_1 = 1;
+    private final Integer BOOK_ID_2 = 2;
+    private final Integer MAX_BOOKS_IN_ORDER = 5;
+    private final Integer MAX_RENTAL_BOOKS = 10;
+    private final Integer DAYS_RENTAL_BOOKS = 14;
+
+    private User mockUser;
+    private Book mockBook1;
+    private Book mockBook2;
+    private Order mockOrder;
+    private OrderBook mockOrderBook;
+    private OrderCreate orderCreateDto;
+    private OrderBookChangeRequest changeRequest;
+
 
     @BeforeEach
     void setUp() {
-        // Устанавливаем значения для @Value полей с помощью рефлексии
-        ReflectionTestUtils.setField(orderService, "maxBooksInOrder", 3);
-        ReflectionTestUtils.setField(orderService, "maxRentalBooks", 5);
+        // Устанавливаем значения @Value полей для тестов
+        // Используем ReflectionTestUtils, так как @Value не работает напрямую с @InjectMocks вне контекста Spring
+        ReflectionTestUtils.setField(orderService, "maxBooksInOrder", MAX_BOOKS_IN_ORDER);
+        ReflectionTestUtils.setField(orderService, "maxRentalBooks", MAX_RENTAL_BOOKS);
+        ReflectionTestUtils.setField(orderService, "daysRentalBooks", DAYS_RENTAL_BOOKS);
 
+        // Настройка общих моков
+        mockUser = new User();
+        mockUser.setId(USER_ID);
+        mockUser.setStatusBlock(false);
+        mockUser.setBookRented(0); // Используем сеттер, если он есть
+
+
+        mockBook1 = new Book();
+        mockBook1.setId(BOOK_ID_1);
+        mockBook1.setAvailable(5);
+        mockBook1.setReserve(0);
+        mockBook1.setCount(5); // Общее количество экземпляров
+
+        mockBook2 = new Book();
+        mockBook2.setId(BOOK_ID_2);
+        mockBook2.setAvailable(1);
+        mockBook2.setReserve(0);
+        mockBook2.setCount(1);
+
+        mockOrder = new Order();
+        mockOrder.setId(ORDER_ID);
+        mockOrder.setUser(mockUser);
+        mockOrder.setCreatedData(LocalDate.now());
+
+        mockOrderBook = new OrderBook();
+        mockOrderBook.setId(ORDER_BOOK_ID);
+        mockOrderBook.setOrder(mockOrder);
+        mockOrderBook.setBook(mockBook1);
+        mockOrderBook.setStatus(OrderBook.OrderBookStatus.CREATED);
+
+        orderCreateDto = new OrderCreate();
+        orderCreateDto.setUser_id(USER_ID);
+        orderCreateDto.setBook_ids(List.of(BOOK_ID_1, BOOK_ID_2));
+
+        changeRequest = new OrderBookChangeRequest();
+        changeRequest.setOrderBookId(ORDER_BOOK_ID);
     }
 
     @Test
-    @DisplayName("findAll должен возвращать страницу заказов")
-    void findAll_shouldReturnPageOfOrders() {
+    @DisplayName("findAll - Должен вернуть страницу заказов")
+    void findAll_ShouldReturnPageOfOrders() {
+        // Arrange
         Pageable pageable = PageRequest.of(0, 10);
-        List<Order> orderList = List.of(new Order());
+        List<Order> orderList = Collections.singletonList(mockOrder);
         Page<Order> orderPage = new PageImpl<>(orderList, pageable, orderList.size());
+
         when(orderRepository.findAll(pageable)).thenReturn(orderPage);
+
+        // Act
         Page<Order> result = orderService.findAll(pageable);
 
-        assertEquals(orderPage, result);
-        verify(orderRepository).findAll(pageable); // Убеждаемся, что метод репозитория был вызван
-    }
-
-    @Test
-    @DisplayName("findById должен возвращать заказ, если он найден")
-    void findById_whenOrderExists_shouldReturnOrder() {
-        // Arrange
-        Long orderId = 1L;
-        Order o = new Order();
-        when(orderRepository.findById(orderId)).thenReturn(Optional.of(o));
-        Order foundOrder = orderService.findById(orderId);
         // Assert
-        assertNotNull(foundOrder);
-        assertEquals(o, foundOrder);
-        verify(orderRepository).findById(orderId);
+        assertNotNull(result);
+        assertEquals(1, result.getTotalElements());
+        assertEquals(mockOrder, result.getContent().get(0));
+        verify(orderRepository, times(1)).findAll(pageable);
     }
 
     @Test
-    @DisplayName("findById должен выбрасывать NotFoundEntity, если заказ не найден")
-    void findById_whenOrderNotFound_shouldThrowNotFoundEntity() {
+    @DisplayName("findById - Должен вернуть заказ при существующем ID")
+    void findById_WhenOrderExists_ShouldReturnOrder() {
         // Arrange
-        Long orderId = 99L;
-        when(orderRepository.findById(orderId)).thenReturn(Optional.empty());
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(mockOrder));
+
+        // Act
+        Order result = orderService.findById(ORDER_ID);
+
+        // Assert
+        assertNotNull(result);
+        assertEquals(ORDER_ID, result.getId());
+        verify(orderRepository, times(1)).findById(ORDER_ID);
+    }
+
+    @Test
+    @DisplayName("findById - Должен выбросить NotFoundEntity при несуществующем ID")
+    void findById_WhenOrderNotExists_ShouldThrowNotFoundEntity() {
+        // Arrange
+        Long nonExistentId = 999L;
+        when(orderRepository.findById(nonExistentId)).thenReturn(Optional.empty());
 
         // Act & Assert
-        assertThrows(NotFoundEntity.class, () -> {
-            orderService.findById(orderId);
+        NotFoundEntity exception = assertThrows(NotFoundEntity.class, () -> {
+            orderService.findById(nonExistentId);
         });
-        verify(orderRepository).findById(orderId);
+        assertEquals("Order with id " + nonExistentId + " not found", exception.getMessage());
+        verify(orderRepository, times(1)).findById(nonExistentId);
     }
 
-    @Test
-    @DisplayName("createNewOrder должен успешно создавать заказ")
-    void createNewOrder_whenValid_shouldCreateOrder() {
-        // Arrange
-        Integer userId =4;
-        List<Integer> bookIds = List.of(101,102);
-        User user = User.builder().bookRented(0).id(userId).build();
+    // --- Тесты для createNewOrder ---
 
-        OrderCreate orderCreate = OrderCreate.builder().user_id(userId).book_ids(bookIds).build();
-        when(userService.findById(userId)).thenReturn(user);
-        when(bookService.reserveBookById(101)).thenReturn(true);
-        when(bookService.reserveBookById(102)).thenReturn(true);
-        // Настраиваем мок save так, чтобы он возвращал переданный ему объект с некоторыми изменениями
+    @Test
+    @DisplayName("createNewOrder - Успешное создание заказа")
+    void createNewOrder_Successful() {
+        // Arrange
+        when(userService.findById(USER_ID)).thenReturn(mockUser);
+        when(bookService.findById(BOOK_ID_1)).thenReturn(mockBook1);
+        when(bookService.findById(BOOK_ID_2)).thenReturn(mockBook2);
+
+        Order savedOrderWithId = new Order();
+        savedOrderWithId.setId(ORDER_ID);
+        savedOrderWithId.setUser(mockUser);
+        savedOrderWithId.setCreatedData(LocalDate.now());
+
         when(orderRepository.save(any(Order.class))).thenAnswer(invocation -> {
             Order orderToSave = invocation.getArgument(0);
-            orderToSave.setId(2L); // Имитируем присвоение ID при сохранении
-            return orderToSave;
+            orderToSave.setId(ORDER_ID); // Устанавливаем ID
+            return orderToSave; // Возвращаем "сохраненный" объект
         });
 
-        // Act
-        Order createdOrder = orderService.createNewOrder(orderCreate);
+        mockOrder.setOrderBooks(Set.of( // Добавляем ожидаемые OrderBook к моку order
+                new OrderBook(null, mockOrder, OrderBook.OrderBookStatus.CREATED, null, null,null,mockBook1 ),
+                new OrderBook(null, mockOrder, OrderBook.OrderBookStatus.CREATED, null, null, null, mockBook2)
+        ));
+        when(orderRepository.findById(ORDER_ID)).thenReturn(Optional.of(mockOrder)); // Возвращаем мок заказа с книгами
 
-        // Assert
-        assertNotNull(createdOrder);
-        assertEquals(userId, createdOrder.getUser().getId());
-        assertEquals(Order.OrderStatus.READY, createdOrder.getStatus());
-        assertNotNull(createdOrder.getId()); // Убеждаемся, что ID был присвоен (имитация save)
+        Order result = orderService.createNewOrder(orderCreateDto);
 
-        verify(userService).findById(userId);
-        verify(bookService).reserveBookById(101);
-        verify(bookService).reserveBookById(102);
-        verify(orderRepository).save(any(Order.class));
+        assertNotNull(result);
+        assertEquals(ORDER_ID, result.getId());
+        assertEquals(mockUser, result.getUser());
+        assertNotNull(result.getCreatedData());
+        assertNotNull(result.getOrderBooks());
+        assertEquals(2, result.getOrderBooks().size()); // Проверяем количество книг в заказе
+
+        // Проверяем, что доступное количество книг уменьшилось
+        assertEquals(4, mockBook1.getAvailable()); // 5 -> 4
+        assertEquals(0, mockBook2.getAvailable()); // 1 -> 0
+
+        verify(userService, times(1)).findById(USER_ID);
+        verify(bookService, times(1)).findById(BOOK_ID_1);
+        verify(bookService, times(1)).findById(BOOK_ID_2);
+        verify(orderRepository, times(1)).save(any(Order.class)); // Проверяем, что save был вызван
+        verify(orderRepository, times(1)).findById(ORDER_ID); // Проверяем финальный findById
+
     }
 
     @Test
-    @DisplayName("createNewOrder должен выбрасывать BookUnavailableExeption, когда одна из книг закончилась")
-    void createNewOrder_whenBookAvailableZero_shouldCreateOrder() {
-
-        Integer userId = 3;
-        List<Integer> bookIds = List.of(101,102);
-        User user =  User.builder().bookRented(0).build();
-        OrderCreate orderCreate = OrderCreate.builder().user_id(userId).book_ids(bookIds).build();
-
-        when(userService.findById(userId)).thenReturn(user);
-        when(bookService.reserveBookById(101)).thenReturn(true);
-        when(bookService.reserveBookById(102)).thenReturn(false); //Нет доступной книги
-
-        assertThrows(BookUnavailableException.class, () -> {
-                    orderService.createNewOrder(orderCreate);
-        });
-        verify(userService).findById(userId);
-        verify(orderRepository, never()).save(any(Order.class));
-    }
-
-    @Test
-    @DisplayName("createNewOrder должен выбрасывать NotFoundUser, если пользователь не найден")
-    void createNewOrder_whenUserNotFound_shouldThrowNotFoundUser() {
-
-        Integer userId = 99;
-        List<Integer> bookIds = List.of(101,102);
-        OrderCreate orderCreate = OrderCreate.builder().user_id(userId).book_ids(bookIds).build();
-
-        when(userService.findById(userId)).thenThrow(new NotFoundUser("Пользователь не найден"));
-
+    @DisplayName("createNewOrder - Пользователь не найден")
+    void createNewOrder_UserNotFound() {
+        Integer nonExistentUserId = 999;
+        orderCreateDto.setUser_id(nonExistentUserId);
+        when(userService.findById(nonExistentUserId)).thenThrow(new NotFoundUser("User not found")); // Или вернуть null и проверить исключение из сервиса
 
         assertThrows(NotFoundUser.class, () -> {
-            orderService.createNewOrder(orderCreate);
+            orderService.createNewOrder(orderCreateDto);
         });
-        verify(userService).findById(userId);
-        verify(bookService, never()).reserveBookById(anyInt()); // Резервирование не должно вызываться
-        verify(orderRepository, never()).save(any(Order.class)); // Сохранение не должно вызываться
+        verify(userService, times(1)).findById(nonExistentUserId);
+        verifyNoInteractions(bookService, orderRepository, orderBookRepository); // Убеждаемся, что другие зависимости не вызывались
     }
 
     @Test
-    @DisplayName("createNewOrder должен выбрасывать BookCountExcessException, если книг больше maxBooksInOrder")
-    void createNewOrder_whenTooManyBooksInOrder_shouldThrowBookCountExcessException() {
+    @DisplayName("createNewOrder - Пользователь заблокирован")
+    void createNewOrder_UserBlocked() {
+        mockUser.setStatusBlock(true);
+        when(userService.findById(USER_ID)).thenReturn(mockUser);
 
-        Integer userId = 4;
-        User user = new User();
-        user.setBookRented(0);
-        List<Integer> bookIds = List.of(101, 102, 103, 104); // Больше 3 (maxBooksInOrder)
-        OrderCreate orderCreate = OrderCreate.builder().user_id(userId).book_ids(bookIds).build();
+        assertThrows(UserBlockExeption.class, () -> {
+            orderService.createNewOrder(orderCreateDto);
+        });
+        verify(userService, times(1)).findById(USER_ID);
+        verifyNoInteractions(bookService, orderRepository, orderBookRepository);
+    }
 
-        when(userService.findById(userId)).thenReturn(user);
+    @Test
+    @DisplayName("createNewOrder - Превышено кол-во книг в заказе")
+    void createNewOrder_TooManyBooksInOrder() {
+        List<Integer> tooManyBooks = List.of(1, 2, 3, 4, 5, 6); // Больше чем MAX_BOOKS_IN_ORDER = 5
+        orderCreateDto.setBook_ids(tooManyBooks);
+        when(userService.findById(USER_ID)).thenReturn(mockUser); // Пользователь нужен для проверки лимита
 
         assertThrows(BookCountExcessException.class, () -> {
-            orderService.createNewOrder(orderCreate);
+            orderService.createNewOrder(orderCreateDto);
         });
-        verify(userService).findById(userId);
-        verify(bookService, never()).reserveBookById(anyInt());
-        verify(orderRepository, never()).save(any(Order.class));
+        verify(userService, times(1)).findById(USER_ID); // Вызывается до проверки кол-ва книг
+        verifyNoInteractions(bookService, orderRepository, orderBookRepository);
     }
 
     @Test
-    @DisplayName("createNewOrder должен выбрасывать BookCountExcessException, если превышен лимит книг пользователем (с новыми лимит по количеству книг на руках будет превышен)")
-    void createNewOrder_whenUserRentalLimitExceeded_shouldThrowBookCountExcessException() {
-        // Arrange
-        Integer userId = 4;
-        List<Integer> bookIds = List.of(101, 102);
-
-        OrderCreate orderCreate = OrderCreate.builder().user_id(userId).book_ids(bookIds).build();
-        User user =  User.builder().bookRented(4).build();
-        // У пользователя уже 4 книги (лимит 5)
-        // 4 (уже есть) + 2 (в заказе) > 5 (maxRentalBooks)
-
-        when(userService.findById(userId)).thenReturn(user);
-
+    @DisplayName("createNewOrder - Превышен лимит книг на руках у пользователя")
+    void createNewOrder_UserRentalLimitExceeded() {
+        mockUser.setBookRented(MAX_RENTAL_BOOKS - 1); // Пользователь уже взял 9 книг (лимит 10)
+        orderCreateDto.setBook_ids(List.of(BOOK_ID_1, BOOK_ID_2)); // Пытается взять еще 2
+        when(userService.findById(USER_ID)).thenReturn(mockUser);
 
         assertThrows(BookCountExcessException.class, () -> {
-            orderService.createNewOrder(orderCreate);
+            orderService.createNewOrder(orderCreateDto);
         });
-        verify(userService).findById(userId);
-        verify(bookService, never()).reserveBookById(anyInt());
-        verify(orderRepository, never()).save(any(Order.class));
+        verify(userService, times(1)).findById(USER_ID);
+        verifyNoInteractions(bookService, orderRepository, orderBookRepository);
     }
 
-
-
     @Test
-    @DisplayName("createNewOrder должен выбрасывать BookUnavailableException, если книга недоступна")
-    void createNewOrder_whenBookUnavailable_shouldThrowBookUnavailableException() {
+    @DisplayName("createNewOrder - Книга недоступна")
+    void createNewOrder_BookUnavailable() {
 
-        Integer userId =4;
+        mockBook2.setAvailable(0); // Вторая книга недоступна
+        when(userService.findById(USER_ID)).thenReturn(mockUser);
+        when(bookService.findById(BOOK_ID_1)).thenReturn(mockBook1);
+        when(bookService.findById(BOOK_ID_2)).thenReturn(mockBook2);
 
-        Integer availableBookId = 101;
-        Integer unavailableBookId = 102;
-        List<Integer> bookIds = List.of(availableBookId,unavailableBookId);
-        OrderCreate orderCreate = OrderCreate.builder().user_id(userId).book_ids(bookIds).build();
 
-        User user = new User();
-        user.setBookRented(0);
-
-        when(userService.findById(userId)).thenReturn(user);
-        when(bookService.reserveBookById(availableBookId)).thenReturn(true); // Первая книга доступна
-        when(bookService.reserveBookById(unavailableBookId)).thenReturn(false); // Вторая недоступна
+        Order savedOrderWithId = new Order();
+        savedOrderWithId.setId(ORDER_ID);
+        savedOrderWithId.setUser(mockUser);
+        savedOrderWithId.setCreatedData(LocalDate.now());
+        when(orderRepository.save(any(Order.class))).thenReturn(savedOrderWithId);
 
 
         assertThrows(BookUnavailableException.class, () -> {
-            orderService.createNewOrder(orderCreate);
+            orderService.createNewOrder(orderCreateDto);
         });
-        verify(userService).findById(userId);
-        verify(bookService).reserveBookById(unavailableBookId);
-        verify(orderRepository, never()).save(any(Order.class)); // Заказ не должен сохраняться
+
+        verify(userService, times(1)).findById(USER_ID);
+        verify(bookService, times(1)).findById(BOOK_ID_1);
+        verify(bookService, times(1)).findById(BOOK_ID_2);
+        verify(orderRepository, times(1)).save(any(Order.class)); // Пустой заказ сохраняется до проверки книг
+        verify(orderRepository, never()).findById(anyLong()); // Финальный findById не вызывается
+        verifyNoInteractions(orderBookRepository); // orderBookRepository.save не вызывается
     }
 
     @Test
-    @DisplayName("startRentalOrder должен обновить резерв книг, если заказ найден")
-    void startRentalOrder_whenOrderFound_shouldUpdateBookReserve() {
-        // Arrange
-        Long orderId = 10L;
-        // Устанавливаем начальный резерв в 1, чтобы проверить уменьшение до 0
-        Book testBook1 =  mock(Book.class);
-        Book testBook2 =  mock(Book.class);
-        when(testBook1.getReserve()).thenReturn(1);
-        when(testBook2.getReserve()).thenReturn(2);
-        User user =  User.builder().bookRented(4).build();
-        Order testOrder = Order.builder().reservedBooks(List.of(testBook1,testBook2)).user(user).build();
+    @DisplayName("createNewOrder - Книга не найдена (через BookService)")
+    void createNewOrder_BookNotFound() {
+        int nonExistentBookId = 999;
+        orderCreateDto.setBook_ids(List.of(BOOK_ID_1, nonExistentBookId));
+        when(userService.findById(USER_ID)).thenReturn(mockUser);
+        when(bookService.findById(BOOK_ID_1)).thenReturn(mockBook1);
+        when(bookService.findById(nonExistentBookId)).thenThrow(new NotFoundEntity("Book not found"));
 
-        when(orderRepository.findById(orderId)).thenReturn(Optional.of(testOrder));
-
-        // Act
-        orderService.startRentalOrder(orderId);
-
-        // Assert
-        verify(orderRepository).findById(orderId);
-        verify(testBook1).getReserve();
-        verify(testBook2).getReserve();
-        verify(testBook1).setReserve(0);
-        verify(testBook2).setReserve(1);
-
-    }
-
-    @Test
-    @DisplayName("startRentalOrder должен выбрасывать NotFoundEntity, если заказ не найден")
-    void startRentalOrder_whenOrderNotFound_shouldThrowNotFoundEntity() {
-
-        Long orderId = 99L;
-        when(orderRepository.findById(orderId)).thenReturn(Optional.empty());
-
+        Order savedOrderWithId = new Order();
+        savedOrderWithId.setId(ORDER_ID);
+        savedOrderWithId.setUser(mockUser);
+        savedOrderWithId.setCreatedData(LocalDate.now());
+        when(orderRepository.save(any(Order.class))).thenReturn(savedOrderWithId);
 
         assertThrows(NotFoundEntity.class, () -> {
-            orderService.startRentalOrder(orderId);
-        });verify(orderRepository).findById(orderId);
+            orderService.createNewOrder(orderCreateDto);
+        });
+
+        verify(userService, times(1)).findById(USER_ID);
+        verify(bookService, times(1)).findById(BOOK_ID_1);
+        verify(bookService, times(1)).findById(nonExistentBookId);
+        verify(orderRepository, times(1)).save(any(Order.class));
+        verify(orderRepository, never()).findById(anyLong());
+        verifyNoInteractions(orderBookRepository);
+    }
+
+
+    // --- Тесты для changeOrderBook ---
+
+    @Test
+    @DisplayName("changeOrderBook - OrderBook не найден")
+    void changeOrderBook_OrderBookNotFound() {
+        Long nonExistentOrderBookId = 999L;
+        changeRequest.setOrderBookId(nonExistentOrderBookId);
+        changeRequest.setStatus(OrderBook.OrderBookStatus.PREPARED);
+        when(orderBookRepository.findById(nonExistentOrderBookId)).thenReturn(Optional.empty());
+
+        assertThrows(NotFoundEntity.class, () -> {
+            orderService.changeOrderBook(changeRequest);
+        });
+
+        verify(orderBookRepository, times(1)).findById(nonExistentOrderBookId);
+        verify(orderBookRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("changeOrderBook - Статус не изменен")
+    void changeOrderBook_StatusNotChanged() {
+        changeRequest.setStatus(OrderBook.OrderBookStatus.CREATED);
+        when(orderBookRepository.findById(ORDER_BOOK_ID)).thenReturn(Optional.of(mockOrderBook));
+
+        OrderBook result = orderService.changeOrderBook(changeRequest);
+
+        assertNotNull(result);
+        assertEquals(mockOrderBook, result);
+        verify(orderBookRepository, times(1)).findById(ORDER_BOOK_ID);
+        verify(orderBookRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("changeOrderBook - CREATED -> PREPARED")
+    void changeOrderBook_CreatedToPrepared() {
+        changeRequest.setStatus(OrderBook.OrderBookStatus.PREPARED);
+        mockOrderBook.setStatus(OrderBook.OrderBookStatus.CREATED);
+        int initialReserve = mockBook1.getReserve();
+
+        when(orderBookRepository.findById(ORDER_BOOK_ID)).thenReturn(Optional.of(mockOrderBook));
+        // Возвращаем измененный объект при сохранении
+        when(orderBookRepository.save(any(OrderBook.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        OrderBook result = orderService.changeOrderBook(changeRequest);
+
+        assertNotNull(result);
+        assertEquals(OrderBook.OrderBookStatus.PREPARED, result.getStatus());
+        assertEquals(initialReserve + 1, result.getBook().getReserve()); // Проверяем увеличение резерва
+
+        verify(orderBookRepository, times(1)).findById(ORDER_BOOK_ID);
+        verify(orderBookRepository, times(1)).save(any(OrderBook.class));
+    }
+
+    @Test
+    @DisplayName("changeOrderBook - CREATED -> LOSSLIBRARY")
+    void changeOrderBook_CreatedToLossLibrary() {
+        changeRequest.setStatus(OrderBook.OrderBookStatus.LOSSLIBRARY);
+        mockOrderBook.setStatus(OrderBook.OrderBookStatus.CREATED);
+        int initialCount = mockBook1.getCount(); // Используем общее количество для обновления available
+
+        when(orderBookRepository.findById(ORDER_BOOK_ID)).thenReturn(Optional.of(mockOrderBook));
+        when(orderBookRepository.save(any(OrderBook.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        OrderBook result = orderService.changeOrderBook(changeRequest);
+
+        assertNotNull(result);
+        assertEquals(OrderBook.OrderBookStatus.LOSSLIBRARY, result.getStatus());
+        assertEquals(initialCount - 1, result.getBook().getAvailable()); // Проверяем установку available = count - 1
+
+        verify(orderBookRepository, times(1)).findById(ORDER_BOOK_ID);
+        verify(orderBookRepository, times(1)).save(any(OrderBook.class));
+    }
+
+    @Test
+    @DisplayName("changeOrderBook - PREPARED -> RENTED")
+    void changeOrderBook_PreparedToRented() {
+
+        changeRequest.setStatus(OrderBook.OrderBookStatus.RENTED);
+        mockOrderBook.setStatus(OrderBook.OrderBookStatus.PREPARED);
+        mockBook1.setReserve(1); // Книга должна быть в резерве
+        int initialReserve = mockBook1.getReserve();
+        LocalDate today = LocalDate.now();
+        LocalDate expectedReturnDate = today.plusDays(DAYS_RENTAL_BOOKS);
+
+        when(orderBookRepository.findById(ORDER_BOOK_ID)).thenReturn(Optional.of(mockOrderBook));
+        when(orderBookRepository.save(any(OrderBook.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        // Act
+        OrderBook result = orderService.changeOrderBook(changeRequest);
+
+        // Assert
+        assertNotNull(result);
+        assertEquals(OrderBook.OrderBookStatus.RENTED, result.getStatus());
+        assertEquals(initialReserve - 1, result.getBook().getReserve()); // Резерв уменьшился
+        assertEquals(today, result.getDateStartRentedBook()); // Дата начала аренды установлена
+        assertEquals(expectedReturnDate, result.getDateReturnUpto()); // Дата возврата установлена
+
+        verify(orderBookRepository, times(1)).findById(ORDER_BOOK_ID);
+        verify(orderBookRepository, times(1)).save(any(OrderBook.class));
+    }
+
+
+    @Test
+    @DisplayName("changeOrderBook - RENTED -> RETURNED (On Time)")
+    void changeOrderBook_RentedToReturned_OnTime() {
+
+        changeRequest.setStatus(OrderBook.OrderBookStatus.RETURNED);
+        mockOrderBook.setStatus(OrderBook.OrderBookStatus.RENTED);
+        // Устанавливаем дату возврата в будущем, чтобы не было просрочки
+        mockOrderBook.setDateReturnUpto(LocalDate.now().plusDays(1));
+        int initialAvailable = mockBook1.getAvailable();
+
+        when(orderBookRepository.findById(ORDER_BOOK_ID)).thenReturn(Optional.of(mockOrderBook));
+        when(orderBookRepository.save(any(OrderBook.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        OrderBook result = orderService.changeOrderBook(changeRequest);
+
+
+        assertNotNull(result);
+        assertEquals(OrderBook.OrderBookStatus.RETURNED, result.getStatus());
+        assertNotNull(result.getDateReturnedBook());
+        assertEquals(initialAvailable + 1, result.getBook().getAvailable());
+        verify(userService,never()).addViolation(USER_ID);
+
+        ArgumentCaptor<OrderBook> captor = ArgumentCaptor.forClass(OrderBook.class);
+        verify(orderBookRepository, times(1)).save(captor.capture());
+        OrderBook savedOrderBook = captor.getValue();
+        assertEquals(OrderBook.OrderBookStatus.RETURNED, savedOrderBook.getStatus());
+        assertEquals(initialAvailable + 1, savedOrderBook.getBook().getAvailable());
+    }
+
+    @Test
+    @DisplayName("changeOrderBook - RENTED -> RETURNED (Overdue)")
+    void changeOrderBook_RentedToReturned_Overdue() {
+
+        changeRequest.setStatus(OrderBook.OrderBookStatus.RETURNED);
+        mockOrderBook.setStatus(OrderBook.OrderBookStatus.RENTED);
+        // Устанавливаем дату возврата в прошлом для имитации просрочки
+        mockOrderBook.setDateReturnUpto(LocalDate.now().minusDays(1));
+        int initialAvailable = mockBook1.getAvailable();
+
+        when(orderBookRepository.findById(ORDER_BOOK_ID)).thenReturn(Optional.of(mockOrderBook));
+        when(orderBookRepository.save(any(OrderBook.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        OrderBook result = orderService.changeOrderBook(changeRequest);
+
+        assertNotNull(result);
+        assertEquals(OrderBook.OrderBookStatus.RETURNED, result.getStatus());
+        assertNotNull(result.getDateReturnedBook());
+        assertEquals(initialAvailable + 1, result.getBook().getAvailable());
+
+        verify(userService,times(1)).addViolation(USER_ID);
+
+        ArgumentCaptor<OrderBook> captor = ArgumentCaptor.forClass(OrderBook.class);
+        verify(orderBookRepository, times(1)).save(captor.capture());
+        OrderBook savedOrderBook = captor.getValue();
+    }
+
+
+    // ---- RENTED -> LOSSUSER ----
+
+    @Test
+    @DisplayName("changeOrderBook - RENTED -> LOSSUSER")
+    void changeOrderBook_RentedToLossUser() {
+        // Arrange
+        changeRequest.setStatus(OrderBook.OrderBookStatus.LOSSUSER);
+        mockOrderBook.setStatus(OrderBook.OrderBookStatus.RENTED);
+        int initialCount = mockBook1.getCount(); // Используем count для обновления available
+
+        when(orderBookRepository.findById(ORDER_BOOK_ID)).thenReturn(Optional.of(mockOrderBook));
+        when(orderBookRepository.save(any(OrderBook.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        // Act
+        OrderBook result = orderService.changeOrderBook(changeRequest);
+
+        // Assert
+        assertNotNull(result);
+        assertEquals(OrderBook.OrderBookStatus.LOSSUSER, result.getStatus());
+        verify(userService,times(1)).addViolation(USER_ID);; // Нарушение +1
+        assertFalse(result.getOrder().getUser().getStatusBlock()); // Блокировки нет
+        assertEquals(initialCount - 1, result.getBook().getAvailable()); // Книга списывается (available = count - 1)
+
+        ArgumentCaptor<OrderBook> captor = ArgumentCaptor.forClass(OrderBook.class);
+        verify(orderBookRepository, times(1)).save(captor.capture());
+        OrderBook savedOrderBook = captor.getValue();
+        assertEquals(initialCount - 1, savedOrderBook.getBook().getAvailable());
+    }
+
+
+    // ---- CANCELLED ----
+
+    @Test
+    @DisplayName("changeOrderBook - PREPARED -> CANCELLED")
+    void changeOrderBook_PreparedToCancelled() {
+        // Arrange
+        changeRequest.setStatus(OrderBook.OrderBookStatus.CANCELLED);
+        mockOrderBook.setStatus(OrderBook.OrderBookStatus.PREPARED);
+        mockBook1.setReserve(1); // Была в резерве
+        mockBook1.setAvailable(4); // Доступных было меньше
+        int initialReserve = mockBook1.getReserve();
+        int initialAvailable = mockBook1.getAvailable();
+
+        when(orderBookRepository.findById(ORDER_BOOK_ID)).thenReturn(Optional.of(mockOrderBook));
+        when(orderBookRepository.save(any(OrderBook.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        // Act
+        OrderBook result = orderService.changeOrderBook(changeRequest);
+
+        // Assert
+        assertNotNull(result);
+        assertEquals(OrderBook.OrderBookStatus.CANCELLED, result.getStatus()); // Статус установлен в моке перед save
+        assertEquals(initialReserve - 1, result.getBook().getReserve()); // Резерв снят
+        assertEquals(initialAvailable + 1, result.getBook().getAvailable()); // Доступность увеличена
+
+        ArgumentCaptor<OrderBook> captor = ArgumentCaptor.forClass(OrderBook.class);
+        verify(orderBookRepository, times(1)).save(captor.capture());
+        OrderBook savedOrderBook = captor.getValue();
+        // Статус CANCELLED должен быть установлен в самом orderBook перед сохранением
+        //assertEquals(OrderBook.OrderBookStatus.CANCELLED, savedOrderBook.getStatus()); // Это не проверяем, т.к. статус неявно присваивается в коде
+        assertEquals(initialReserve - 1, savedOrderBook.getBook().getReserve());
+        assertEquals(initialAvailable + 1, savedOrderBook.getBook().getAvailable());
+    }
+
+    @Test
+    @DisplayName("changeOrderBook - CREATED -> CANCELLED")
+    void changeOrderBook_CreatedToCancelled() {
+        // Arrange
+        changeRequest.setStatus(OrderBook.OrderBookStatus.CANCELLED);
+        mockOrderBook.setStatus(OrderBook.OrderBookStatus.CREATED);
+        // Предполагаем, что книга была зарезервирована при создании заказа (уменьшен available)
+        mockBook1.setAvailable(4);
+        int initialAvailable = mockBook1.getAvailable();
+
+        when(orderBookRepository.findById(ORDER_BOOK_ID)).thenReturn(Optional.of(mockOrderBook));
+        when(orderBookRepository.save(any(OrderBook.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        // Act
+        OrderBook result = orderService.changeOrderBook(changeRequest);
+
+        // Assert
+        assertNotNull(result);
+        assertEquals(initialAvailable + 1, result.getBook().getAvailable()); // Доступность возвращена
+
+        ArgumentCaptor<OrderBook> captor = ArgumentCaptor.forClass(OrderBook.class);
+        verify(orderBookRepository, times(1)).save(captor.capture());
+        OrderBook savedOrderBook = captor.getValue();
+        assertEquals(initialAvailable + 1, savedOrderBook.getBook().getAvailable());
+    }
+
+    @Test
+    @DisplayName("changeOrderBook - RENTED -> CANCELLED (Неподдерживаемый переход)")
+    void changeOrderBook_RentedToCancelled_ThrowsException() {
+        // Arrange
+        changeRequest.setStatus(OrderBook.OrderBookStatus.CANCELLED);
+        mockOrderBook.setStatus(OrderBook.OrderBookStatus.RENTED);
+
+        when(orderBookRepository.findById(ORDER_BOOK_ID)).thenReturn(Optional.of(mockOrderBook));
+
+        // Act & Assert
+        assertThrows(OrderBookStatusException.class, () -> {
+            orderService.changeOrderBook(changeRequest);
+        });
+
+        verify(orderBookRepository, times(1)).findById(ORDER_BOOK_ID);
+        verify(orderBookRepository, never()).save(any());
+    }
+
+
+    @Test
+    @DisplayName("changeOrderBook - RETURNED -> PREPARED (Неподдерживаемый переход)")
+    void changeOrderBook_UnsupportedTransition_ThrowsException() {
+        // Arrange
+        changeRequest.setStatus(OrderBook.OrderBookStatus.PREPARED); // Попытка недопустимого перехода
+        mockOrderBook.setStatus(OrderBook.OrderBookStatus.RETURNED); // Из статуса RETURNED
+
+        when(orderBookRepository.findById(ORDER_BOOK_ID)).thenReturn(Optional.of(mockOrderBook));
+
+        // Act & Assert
+        assertThrows(RuntimeException.class, () -> {
+            orderService.changeOrderBook(changeRequest);
+        });
+        // Ожидаем общее исключение для неподдерживаемых переходов
+
+        verify(orderBookRepository, times(1)).findById(ORDER_BOOK_ID);
+        verify(orderBookRepository, never()).save(any());
     }
 }

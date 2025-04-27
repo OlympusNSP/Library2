@@ -11,6 +11,7 @@ import java.util.List;
 @Builder
 @Setter
 @Getter
+@ToString
 public class OrderCreate {
     @NotNull
     Integer user_id;

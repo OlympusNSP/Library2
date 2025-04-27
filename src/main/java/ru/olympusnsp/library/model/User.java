@@ -28,7 +28,6 @@ public class User implements UserDetails {
     @Column(name = "id", nullable = false)
     private Integer id;
 
-    @Size(max = 255)
     @NotNull
     @Column(name = "username", nullable = false)
     private String username;
@@ -54,17 +53,10 @@ public class User implements UserDetails {
     @Column(name = "violations", nullable = false)
     private Integer violations;
 
-    @Size(max = 20)
     @NotNull
     @Column(name = "role", nullable = false, length = 20)
     @Enumerated(EnumType.STRING)
     private Role role;
-
-    @OneToMany(mappedBy = "user")
-    private Set<Order> orders = new LinkedHashSet<>();
-
-    @OneToMany(mappedBy = "user",cascade = CascadeType.ALL)
-    private Set<RentalBook> rentalBooks = new LinkedHashSet<>();
 
     @Override
     public boolean isAccountNonExpired() {
@@ -76,7 +68,7 @@ public class User implements UserDetails {
      */
     @Override
     public boolean isAccountNonLocked() {
-        return this.statusBlock;
+        return !this.statusBlock;
     }
 
     /**

@@ -5,7 +5,10 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 
+import java.time.LocalDate;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 @Getter
 @Setter
@@ -23,24 +26,15 @@ public class Order {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id")
     @JsonIgnore
-    private ru.olympusnsp.library.model.User user;
+    private User user;
 
-    @Column(name = "manager_id")
-    private Integer managerId;
-
-    @NotNull
-    @Column(name = "status", nullable = false)
-    private OrderStatus status;
-
-    @ManyToMany
-    @JoinTable(name = "order_book",
-            joinColumns = @JoinColumn(name = "order_id"),
-            inverseJoinColumns = @JoinColumn(name = "book_id"))
-    private List<Book> reservedBooks;
+    @Column(name="date_created", nullable = false)
+    private LocalDate createdData;
 
 
-    public enum OrderStatus {
-        READY, COMPLETED, CANCELLED
-    }
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
+    private Set<OrderBook> orderBooks = new LinkedHashSet<>();
+
+
 
 }

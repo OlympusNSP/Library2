@@ -17,6 +17,7 @@ import ru.olympusnsp.library.exeption.SearchStringTooSmall;
 import ru.olympusnsp.library.model.Book;
 import ru.olympusnsp.library.service.BookService;
 
+import java.util.List;
 import java.util.Optional;
 
 @RestController
@@ -61,12 +62,10 @@ public class BookController {
         return bookService.findAllByTitleContains(title, page);
     }
 
-    @PostMapping("/{id}/return")
-    @PreAuthorize("hasRole('MANAGER')")
-    @Operation(summary = "Возвращение книги")
-    public void returnBook(@RequestBody @Valid BooksReturn booksReturn, @PathVariable Integer id){
-        if (booksReturn.getBook_id().equals(id))
-            bookService.returnBook(booksReturn);
+    @GetMapping("/genre/{id}")
+    @Operation(summary = "Получение страницы книг по совпадению с жанром")
+    public Page<Book> findByGenre(@PathVariable Integer id, Pageable page){
+        return bookService.findAllWithGenreId(id,page);
     }
 
 
