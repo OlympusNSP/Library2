@@ -15,6 +15,7 @@ import ru.olympusnsp.library.model.Order;
 import ru.olympusnsp.library.model.OrderBook;
 import ru.olympusnsp.library.repository.OrderBookRepository;
 import ru.olympusnsp.library.repository.OrderRepository;
+import ru.olympusnsp.library.repository.UserRepository;
 
 import java.time.LocalDate;
 import java.util.*;
@@ -45,6 +46,8 @@ public class OrderServiceImpl implements OrderService {
     private Integer daysRentalBooks;
 
     Logger logger = LoggerFactory.getLogger(OrderServiceImpl.class);
+    @Autowired
+    private UserRepository userRepository;
 
 
     /**
@@ -115,6 +118,9 @@ public class OrderServiceImpl implements OrderService {
             //orderBookRepository.save(orderBook);
         }
         order.setOrderBooks(setOrderBook);
+
+        user.setBookRented(book_ids.size()+user.getBookRented());
+        userService.save(user);
         return orderRepository.findById(order.getId()).orElse(null);
     }
 
@@ -160,6 +166,7 @@ public class OrderServiceImpl implements OrderService {
                 var book = orderBook.getBook();
                 logger.debug("Выдача книги id {} до {}",book.getId(), returnUpTo);
                 book.setReserve(book.getReserve() - 1);
+
                 orderBook.setBook(book);
                 return orderBookRepository.save(orderBook);
             }
@@ -176,6 +183,9 @@ public class OrderServiceImpl implements OrderService {
                 var book = orderBook.getBook();
                 book.setAvailable(book.getAvailable() + 1);
                 orderBook.setBook(book);
+                var user = orderBook.getOrder().getUser();
+                user.setBookRented(user.getBookRented()-1);
+                userService.save(user);
                 return orderBookRepository.save(orderBook);
             }
             //
@@ -187,6 +197,8 @@ public class OrderServiceImpl implements OrderService {
                 var book = orderBook.getBook();
                 book.setAvailable(book.getCount() - 1);
                 orderBook.setBook(book);
+                user.setBookRented(user.getBookRented()-1);
+                userService.save(user);
                 return orderBookRepository.save(orderBook);
             }
             // Отмена
@@ -199,6 +211,9 @@ public class OrderServiceImpl implements OrderService {
                         book.setReserve(book.getReserve() - 1);
                         book.setAvailable(book.getAvailable() + 1);
                         orderBook.setBook(book);
+                        var user = orderBook.getOrder().getUser();
+                        user.setBookRented(user.getBookRented()-1);
+                        userService.save(user);
                         return orderBookRepository.save(orderBook);
                     case RENTED:
                         logger.info("Запрещено отменять ареднованный заказ, используйте возврат или потерю");
@@ -208,6 +223,9 @@ public class OrderServiceImpl implements OrderService {
                         var book2 = orderBook.getBook();
                         book2.setAvailable(book2.getAvailable() + 1);
                         orderBook.setBook(book2);
+                        var user2 = orderBook.getOrder().getUser();
+                        user2.setBookRented(user2.getBookRented()-1);
+                        userService.save(user2);
                         return orderBookRepository.save(orderBook);
                     default:
                         logger.info("Отмена из данного состояния невозмозжна");
