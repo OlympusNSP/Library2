@@ -73,18 +73,17 @@ class OrderServiceImplTest {
         ReflectionTestUtils.setField(orderService, "maxRentalBooks", MAX_RENTAL_BOOKS);
         ReflectionTestUtils.setField(orderService, "daysRentalBooks", DAYS_RENTAL_BOOKS);
 
-        // Настройка общих моков
         mockUser = new User();
         mockUser.setId(USER_ID);
         mockUser.setStatusBlock(false);
-        mockUser.setBookRented(0); // Используем сеттер, если он есть
+        mockUser.setBookRented(0);
 
 
         mockBook1 = new Book();
         mockBook1.setId(BOOK_ID_1);
         mockBook1.setAvailable(5);
         mockBook1.setReserve(0);
-        mockBook1.setCount(5); // Общее количество экземпляров
+        mockBook1.setCount(5);
 
         mockBook2 = new Book();
         mockBook2.setId(BOOK_ID_2);
@@ -193,6 +192,7 @@ class OrderServiceImplTest {
         assertNotNull(result);
         assertEquals(ORDER_ID, result.getId());
         assertEquals(mockUser, result.getUser());
+        assertEquals(2, result.getUser().getBookRented());
         assertNotNull(result.getCreatedData());
         assertNotNull(result.getOrderBooks());
         assertEquals(2, result.getOrderBooks().size()); // Проверяем количество книг в заказе
@@ -205,6 +205,7 @@ class OrderServiceImplTest {
         verify(bookService, times(1)).findById(BOOK_ID_1);
         verify(bookService, times(1)).findById(BOOK_ID_2);
         verify(orderRepository, times(1)).save(any(Order.class)); // Проверяем, что save был вызван
+        verify(userService, times(1)).save(mockUser); //
         verify(orderRepository, times(1)).findById(ORDER_ID); // Проверяем финальный findById
 
     }
@@ -429,8 +430,11 @@ class OrderServiceImplTest {
 
         changeRequest.setStatus(OrderBook.OrderBookStatus.RETURNED);
         mockOrderBook.setStatus(OrderBook.OrderBookStatus.RENTED);
+
         // Устанавливаем дату возврата в будущем, чтобы не было просрочки
         mockOrderBook.setDateReturnUpto(LocalDate.now().plusDays(1));
+
+        mockOrderBook.getOrder().getUser().setBookRented(2);
         int initialAvailable = mockBook1.getAvailable();
 
         when(orderBookRepository.findById(ORDER_BOOK_ID)).thenReturn(Optional.of(mockOrderBook));
@@ -439,14 +443,18 @@ class OrderServiceImplTest {
         OrderBook result = orderService.changeOrderBook(changeRequest);
 
 
+        var user = result.getOrder().getUser();
+
         assertNotNull(result);
         assertEquals(OrderBook.OrderBookStatus.RETURNED, result.getStatus());
         assertNotNull(result.getDateReturnedBook());
+        assertEquals(1,user.getBookRented());
         assertEquals(initialAvailable + 1, result.getBook().getAvailable());
         verify(userService,never()).addViolation(USER_ID);
 
         ArgumentCaptor<OrderBook> captor = ArgumentCaptor.forClass(OrderBook.class);
         verify(orderBookRepository, times(1)).save(captor.capture());
+        verify(userService, times(1)).save(user);
         OrderBook savedOrderBook = captor.getValue();
         assertEquals(OrderBook.OrderBookStatus.RETURNED, savedOrderBook.getStatus());
         assertEquals(initialAvailable + 1, savedOrderBook.getBook().getAvailable());
@@ -460,6 +468,7 @@ class OrderServiceImplTest {
         mockOrderBook.setStatus(OrderBook.OrderBookStatus.RENTED);
         // Устанавливаем дату возврата в прошлом для имитации просрочки
         mockOrderBook.setDateReturnUpto(LocalDate.now().minusDays(1));
+        mockOrderBook.getOrder().getUser().setBookRented(2);
         int initialAvailable = mockBook1.getAvailable();
 
         when(orderBookRepository.findById(ORDER_BOOK_ID)).thenReturn(Optional.of(mockOrderBook));
@@ -468,6 +477,7 @@ class OrderServiceImplTest {
         OrderBook result = orderService.changeOrderBook(changeRequest);
 
         assertNotNull(result);
+        assertEquals(1, result.getOrder().getUser().getBookRented());
         assertEquals(OrderBook.OrderBookStatus.RETURNED, result.getStatus());
         assertNotNull(result.getDateReturnedBook());
         assertEquals(initialAvailable + 1, result.getBook().getAvailable());
@@ -488,6 +498,7 @@ class OrderServiceImplTest {
         // Arrange
         changeRequest.setStatus(OrderBook.OrderBookStatus.LOSSUSER);
         mockOrderBook.setStatus(OrderBook.OrderBookStatus.RENTED);
+        mockOrderBook.getOrder().getUser().setBookRented(2);
         int initialCount = mockBook1.getCount(); // Используем count для обновления available
 
         when(orderBookRepository.findById(ORDER_BOOK_ID)).thenReturn(Optional.of(mockOrderBook));
@@ -498,6 +509,7 @@ class OrderServiceImplTest {
 
         // Assert
         assertNotNull(result);
+        assertEquals(1, result.getOrder().getUser().getBookRented());
         assertEquals(OrderBook.OrderBookStatus.LOSSUSER, result.getStatus());
         verify(userService,times(1)).addViolation(USER_ID);; // Нарушение +1
         assertFalse(result.getOrder().getUser().getStatusBlock()); // Блокировки нет
@@ -518,6 +530,7 @@ class OrderServiceImplTest {
         // Arrange
         changeRequest.setStatus(OrderBook.OrderBookStatus.CANCELLED);
         mockOrderBook.setStatus(OrderBook.OrderBookStatus.PREPARED);
+        mockOrderBook.getOrder().getUser().setBookRented(2);
         mockBook1.setReserve(1); // Была в резерве
         mockBook1.setAvailable(4); // Доступных было меньше
         int initialReserve = mockBook1.getReserve();
@@ -531,6 +544,7 @@ class OrderServiceImplTest {
 
         // Assert
         assertNotNull(result);
+        assertEquals(1, result.getOrder().getUser().getBookRented());
         assertEquals(OrderBook.OrderBookStatus.CANCELLED, result.getStatus()); // Статус установлен в моке перед save
         assertEquals(initialReserve - 1, result.getBook().getReserve()); // Резерв снят
         assertEquals(initialAvailable + 1, result.getBook().getAvailable()); // Доступность увеличена
@@ -550,6 +564,7 @@ class OrderServiceImplTest {
         // Arrange
         changeRequest.setStatus(OrderBook.OrderBookStatus.CANCELLED);
         mockOrderBook.setStatus(OrderBook.OrderBookStatus.CREATED);
+        mockOrderBook.getOrder().getUser().setBookRented(2);
         // Предполагаем, что книга была зарезервирована при создании заказа (уменьшен available)
         mockBook1.setAvailable(4);
         int initialAvailable = mockBook1.getAvailable();
@@ -562,6 +577,7 @@ class OrderServiceImplTest {
 
         // Assert
         assertNotNull(result);
+        assertEquals(1, result.getOrder().getUser().getBookRented());
         assertEquals(initialAvailable + 1, result.getBook().getAvailable()); // Доступность возвращена
 
         ArgumentCaptor<OrderBook> captor = ArgumentCaptor.forClass(OrderBook.class);
