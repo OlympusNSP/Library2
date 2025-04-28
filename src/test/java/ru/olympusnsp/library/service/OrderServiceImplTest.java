@@ -456,6 +456,7 @@ class OrderServiceImplTest {
         verify(orderBookRepository, times(1)).save(captor.capture());
         verify(userService, times(1)).save(user);
         OrderBook savedOrderBook = captor.getValue();
+        verify(userService, times(1)).save(mockUser); //
         assertEquals(OrderBook.OrderBookStatus.RETURNED, savedOrderBook.getStatus());
         assertEquals(initialAvailable + 1, savedOrderBook.getBook().getAvailable());
     }
@@ -486,6 +487,7 @@ class OrderServiceImplTest {
 
         ArgumentCaptor<OrderBook> captor = ArgumentCaptor.forClass(OrderBook.class);
         verify(orderBookRepository, times(1)).save(captor.capture());
+        verify(userService, times(1)).save(mockUser); //
         OrderBook savedOrderBook = captor.getValue();
     }
 
@@ -518,6 +520,7 @@ class OrderServiceImplTest {
         ArgumentCaptor<OrderBook> captor = ArgumentCaptor.forClass(OrderBook.class);
         verify(orderBookRepository, times(1)).save(captor.capture());
         OrderBook savedOrderBook = captor.getValue();
+        verify(userService, times(1)).save(mockUser); //
         assertEquals(initialCount - 1, savedOrderBook.getBook().getAvailable());
     }
 
@@ -556,6 +559,7 @@ class OrderServiceImplTest {
         //assertEquals(OrderBook.OrderBookStatus.CANCELLED, savedOrderBook.getStatus()); // Это не проверяем, т.к. статус неявно присваивается в коде
         assertEquals(initialReserve - 1, savedOrderBook.getBook().getReserve());
         assertEquals(initialAvailable + 1, savedOrderBook.getBook().getAvailable());
+        verify(userService, times(1)).save(mockUser); //
     }
 
     @Test
